@@ -1,0 +1,8 @@
+{
+  "name": "My AI Brain Studio",
+  "description": "ডিজাইন করুন ও নিজের ইচ্ছামতো নতুন তথ্য শিখিয়ে কথা বলুন আপনার নিজস্ব নামের চমৎকার এআই ব্রেনের সাথে।",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

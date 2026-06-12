@@ -454,13 +454,13 @@ app.post("/api/v1/chat/completions", async (req, res) => {
 // ==========================================
 app.post("/api/github/sync", async (req, res) => {
   try {
-    const { token, repo, branch, filePath, content } = req.body;
+    const { token, repo, branch, filePath, content, syncType } = req.body;
 
     if (!token) {
       return res.status(400).json({ error: "GitHub Personal Access Token (PAT) প্রয়োজন। অনুগ্রহ করে আপনার টোকেনটি ড্যাশবোর্ডে সেট করুন।" });
     }
     if (!repo) {
-      return res.status(400).json({ error: "GitHub Repository Name প্রয়োজন (যেমন: DROBON/AI-Brain)।" });
+      return res.status(400).json({ error: "GitHub Repository Name প্রয়োজন (যেমন: DROBON/Ai-brain)।" });
     }
 
     // Clean repo string if user passes full URL
@@ -469,71 +469,169 @@ app.post("/api/github/sync", async (req, res) => {
       cleanRepo = cleanRepo.slice(0, -1);
     }
     const targetBranch = branch || "main";
-    const targetPath = filePath || "active_brain_blueprint.json";
-    
-    // Get latest local blueprint configuration if no content supplied
-    let dataToPush = content;
-    if (!dataToPush) {
-      const blueprint = await readJsonFile(BLUEPRINT_PATH, null);
-      if (!blueprint) {
-        return res.status(400).json({ error: "ব্যাকআপ করার মতো কোনো কনফিগারেশন বা ব্লুপ্রিন্ট অ্যাক্টিভ নেই। দয়া করে ড্যাশবোর্ডে 'সিঙ্ক করুন' ক্লিক করে অ্যাক্টিভ ব্লুপ্রিন্ট তৈরি করুন।" });
+
+    if (syncType === "codebase") {
+      // Backup all major source code files
+      const filesToBackup = [
+        { path: "server.ts" },
+        { path: ".env.example" },
+        { path: "package.json" },
+        { path: "vite.config.ts" },
+        { path: "tsconfig.json" },
+        { path: "index.html" },
+        { path: ".gitignore" },
+        { path: "src/main.tsx" },
+        { path: "src/types.ts" },
+        { path: "src/index.css" },
+        { path: "src/App.tsx" }
+      ];
+
+      const results = [];
+      const fs = require("fs").promises;
+      const pathModule = require("path");
+
+      for (const fileItem of filesToBackup) {
+        try {
+          const absoluteLocalPath = pathModule.join(process.cwd(), fileItem.path);
+          let rawData;
+          try {
+            rawData = await fs.readFile(absoluteLocalPath, "utf-8");
+          } catch (fileReadErr) {
+            console.warn(`Could not read file ${fileItem.path}, skipping.`, fileReadErr);
+            continue;
+          }
+
+          const baseApiUrl = `https://api.github.com/repos/${cleanRepo}/contents/${fileItem.path}`;
+
+          // Step 1: Check existing file SHA
+          let existingSha: string | null = null;
+          try {
+            const getFileRes = await fetch(`${baseApiUrl}?ref=${targetBranch}`, {
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "My-AI-Brain-Studio"
+              }
+            });
+            if (getFileRes.ok) {
+              const fileData: any = await getFileRes.json();
+              existingSha = fileData.sha;
+            }
+          } catch (err) {
+            // Assume not found
+          }
+
+          // Step 2: Upload logic
+          const putBody: any = {
+            message: `🔄 My AI Brain Code Sync: Auto-backup of ${fileItem.path}`,
+            content: Buffer.from(rawData).toString("base64"),
+            branch: targetBranch
+          };
+
+          if (existingSha) {
+            putBody.sha = existingSha;
+          }
+
+          const putRes = await fetch(baseApiUrl, {
+            method: "PUT",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "Content-Type": "application/json",
+              "User-Agent": "My-AI-Brain-Studio"
+            },
+            body: JSON.stringify(putBody)
+          });
+
+          if (putRes.ok) {
+            results.push({ path: fileItem.path, status: "success" });
+          } else {
+            const errRes = await putRes.json();
+            results.push({ path: fileItem.path, status: "failed", error: errRes?.message });
+          }
+        } catch (itemErr: any) {
+          results.push({ path: fileItem.path, status: "error", error: itemErr.message });
+        }
       }
-      dataToPush = JSON.stringify(blueprint, null, 2);
-    }
 
-    const baseApiUrl = `https://api.github.com/repos/${cleanRepo}/contents/${targetPath}`;
+      const failures = results.filter(r => r.status !== "success");
+      if (failures.length === results.length) {
+        throw new Error("সবগুলো কোড ফাইল আপলোড করতে ব্যর্থ হয়েছে। অনুগ্রহ করে আপনার GitHub টোকেন রাইট পারমিশন চেক করুন।");
+      }
 
-    // Step 1: Check if the file already exists on GitHub to retrieve its current revision SHA (required for overwrite)
-    let existingSha: string | null = null;
-    try {
-      const getFileRes = await fetch(`${baseApiUrl}?ref=${targetBranch}`, {
+      return res.json({
+        success: true,
+        message: `অভিনন্দন! আপনার এআই মগজের সম্পূর্ণ সোর্স কোডিং (${results.filter(r => r.status === "success").length}/${results.length} ফাইল) সফলভাবে '${cleanRepo}' রিপোজিটরির '${targetBranch}' ব্রাঞ্চে সরাসরি ১-ক্লিকে সেভ করা হয়েছে! 🚀`
+      });
+
+    } else {
+      // Memory Blueprint and training config only
+      const targetPath = filePath || "active_brain_blueprint.json";
+      let dataToPush = content;
+      if (!dataToPush) {
+        const blueprint = await readJsonFile(BLUEPRINT_PATH, null);
+        if (!blueprint) {
+          return res.status(400).json({ error: "ব্যাকআপ করার মতো কোনো কনফিগারেশন বা ব্লুপ্রিন্ট অ্যাক্টিভ নেই। দয়া করে ড্যাশবোর্ডে 'সিঙ্ক করুন' ক্লিক করে অ্যাক্টিভ ব্লুপ্রিন্ট তৈরি করুন।" });
+        }
+        dataToPush = JSON.stringify(blueprint, null, 2);
+      }
+
+      const baseApiUrl = `https://api.github.com/repos/${cleanRepo}/contents/${targetPath}`;
+
+      // Step 1: Check if the file already exists on GitHub to retrieve its current revision SHA (required for overwrite)
+      let existingSha: string | null = null;
+      try {
+        const getFileRes = await fetch(`${baseApiUrl}?ref=${targetBranch}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "My-AI-Brain-Studio"
+          }
+        });
+        if (getFileRes.ok) {
+          const fileData: any = await getFileRes.json();
+          existingSha = fileData.sha;
+        }
+      } catch (err) {
+        console.log("File potentially does not exist on GitHub. Proceeding with initial commit creation.");
+      }
+
+      // Step 2: Create or update the file in the repository
+      const putBody: any = {
+        message: `🔄 My AI Brain Auto-Sync: Updated latest custom configurations & knowledge memorized cards`,
+        content: Buffer.from(dataToPush).toString("base64"),
+        branch: targetBranch
+      };
+
+      if (existingSha) {
+        putBody.sha = existingSha;
+      }
+
+      const putRes = await fetch(baseApiUrl, {
+        method: "PUT",
         headers: {
           "Authorization": `Bearer ${token}`,
           "Accept": "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Type": "application/json",
           "User-Agent": "My-AI-Brain-Studio"
-        }
+        },
+        body: JSON.stringify(putBody)
       });
-      if (getFileRes.ok) {
-        const fileData: any = await getFileRes.json();
-        existingSha = fileData.sha;
+
+      if (!putRes.ok) {
+        const errorResponse = await putRes.json();
+        throw new Error(errorResponse?.message || "GitHub API returned an error status.");
       }
-    } catch (err) {
-      console.log("File potentially does not exist on GitHub. Proceeding with initial commit creation.");
+
+      return res.json({
+        success: true,
+        message: `আপনার মগজের লেটেস্ট ব্লুপ্রিন্ট, আচরণ ও মেমোরি কনফিগারেশন সফলভাবে '${cleanRepo}' রিপোজিটরির '${targetPath}' ফাইলে ১-ক্লিকে সেভ করা হয়েছে! 🚀`
+      });
     }
-
-    // Step 2: Create or update the file in the repository
-    const putBody: any = {
-      message: `🔄 My AI Brain Auto-Sync: Updated latest custom configurations & knowledge memorized cards`,
-      content: Buffer.from(dataToPush).toString("base64"),
-      branch: targetBranch
-    };
-
-    if (existingSha) {
-      putBody.sha = existingSha;
-    }
-
-    const putRes = await fetch(baseApiUrl, {
-      method: "PUT",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
-        "User-Agent": "My-AI-Brain-Studio"
-      },
-      body: JSON.stringify(putBody)
-    });
-
-    if (!putRes.ok) {
-      const errorResponse = await putRes.json();
-      throw new Error(errorResponse?.message || "GitHub API returned an error status.");
-    }
-
-    return res.json({
-      success: true,
-      message: `আপনার মগজের লেটেস্ট ব্লুপ্রিন্ট, আচরণ ও মেমোরি কনফিগারেশন সফলভাবে '${cleanRepo}' রিপোজিটরির '${targetPath}' ফাইলে ১-ক্লিকে সেভ করা হয়েছে! 🚀`
-    });
 
   } catch (err: any) {
     console.error("GitHub Sync Error:", err);

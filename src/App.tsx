@@ -132,9 +132,10 @@ export default function App() {
 
   // GitHub Auto-Backup States
   const [githubToken, setGithubToken] = useState(() => localStorage.getItem("github_pat") || "");
-  const [githubRepo, setGithubRepo] = useState(() => localStorage.getItem("github_repo") || "DROBON/AI-Brain");
+  const [githubRepo, setGithubRepo] = useState(() => localStorage.getItem("github_repo") || "DROBON/Ai-brain");
   const [githubBranch, setGithubBranch] = useState(() => localStorage.getItem("github_branch") || "main");
   const [githubFilePath, setGithubFilePath] = useState(() => localStorage.getItem("github_filepath") || "active_brain_blueprint.json");
+  const [githubSyncType, setGithubSyncType] = useState<"memory" | "codebase">("codebase");
   const [isSyncingToGithub, setIsSyncingToGithub] = useState(false);
   const [githubSyncError, setGithubSyncError] = useState<string | null>(null);
   const [githubSyncSuccess, setGithubSyncSuccess] = useState<string | null>(null);
@@ -149,7 +150,7 @@ export default function App() {
       return;
     }
     if (!githubRepo.trim()) {
-      setGithubSyncError("দয়া করে আপনার রিপোজিটরির নাম দিন (যেমন: DROBON/AI-Brain)।");
+      setGithubSyncError("দয়া করে আপনার রিপোজিটরির নাম দিন (যেমন: DROBON/Ai-brain)।");
       return;
     }
 
@@ -169,6 +170,7 @@ export default function App() {
           repo: githubRepo.trim(),
           branch: githubBranch.trim(),
           filePath: githubFilePath.trim(),
+          syncType: githubSyncType,
           content: JSON.stringify({ config, facts }, null, 2)
         })
       });
@@ -187,7 +189,9 @@ export default function App() {
         {
           id: "msg-github-sync-" + Date.now(),
           role: "model",
-          text: `🐙 [GitHub অটো-আর্কাইভ সম্পন্ন]: আপনার এআই মগজের মগজ-রিসোর্স ডেটা সফলভাবে **${githubRepo.trim()}** রিপোজিটরির **${githubFilePath}** ফাইলে কমিট করা হয়েছে! আপনি যখনই ইচ্ছা এই ১-ক্লিক ব্যাকআপ বাটনের সাহায্যে আপনার অবয়ব কোডিং এবং সংগৃহীত মেমোরি কার্ড ক্লাউড রিপোতে জমা রাখতে পারবেন।`,
+          text: githubSyncType === "codebase" 
+            ? `🐙 [GitHub কোডবেস সিঙ্ক সম্পন্ন]: আপনার এআই মগজ ড্যাশবোর্ডের সমস্ত গুরুত্বপূর্ণ সোর্স ফাইল (server.ts, App.tsx, package.json ইত্যাদি) সফলভাবে **${githubRepo.trim()}** রিপোজিটরির **${githubBranch}** ব্রাঞ্চে সরাসরি আপলোড করা হয়েছে! আপনার কাস্টম কোডিং এখন পুরোপুরি ক্লাউডে সংরক্ষিত।`
+            : `🐙 [GitHub মেমোরি সফল সিঙ্ক]: আপনার এআই মগজের নিজস্ব মগজ-রিসোর্স ডেটা সফলভাবে **${githubRepo.trim()}** রিপোজিটরির **${githubFilePath}** ফাইলে কমিট করা হয়েছে! এটি যেকোনো সময় এখান থেকে ব্যাকআপ হিস্টোরি হিসেবে রিস্টোর করা যাবে।`,
           timestamp: Date.now()
         }
       ]);
@@ -1503,10 +1507,43 @@ export default function App() {
                   </div>
 
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    আপনার এই এআই ড্যাশবোর্ডের সমস্ত কোডিং, পার্সোনালিটি এবং ট্রেনিং মেমোরি সরাসরি আপনার রিপোজিটরি <strong className="text-slate-300">DROBON/AI-Brain</strong>-এ এক ক্লিকে সেভ করুন।
+                    আপনার এই এআই ড্যাশবোর্ডের সমস্ত কোডিং (server.ts, App.tsx, package.json...) এবং ট্রেনিং মেমোরি সরাসরি আপনার রিপোজিটরি <strong className="text-slate-300">DROBON/Ai-brain</strong>-এ এক ক্লিকে সেভ করুন।
                   </p>
 
                   <form onSubmit={handleGithubSync} className="space-y-3">
+                    {/* Select backup type */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 block">ব্যাকআপ ক্যাটাগরি:</label>
+                      <div className="grid grid-cols-2 gap-1.5 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setGithubSyncType("codebase")}
+                          className={`py-2 px-2 rounded-lg text-[10px] font-extrabold tracking-wide transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            githubSyncType === "codebase" 
+                              ? "bg-indigo-600 text-white shadow-sm" 
+                              : "text-slate-400 hover:text-slate-200"
+                          }`}
+                          id="backup-type-codebase"
+                        >
+                          <Terminal className="h-3.5 w-3.5 text-slate-200 shrink-0" />
+                          <span>সমস্ত কোডিং (Codebase) 🚀</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGithubSyncType("memory")}
+                          className={`py-2 px-2 rounded-lg text-[10px] font-extrabold tracking-wide transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            githubSyncType === "memory" 
+                              ? "bg-indigo-600 text-white shadow-sm" 
+                              : "text-slate-400 hover:text-slate-200"
+                          }`}
+                          id="backup-type-memory"
+                        >
+                          <Brain className="h-3.5 w-3.5 text-slate-200 shrink-0" />
+                          <span>শুধু মেমোরি ব্লুপ্রিন্ট</span>
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Token Input */}
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
@@ -1538,7 +1575,7 @@ export default function App() {
                         <input
                           type="text"
                           className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-[11px] placeholder-slate-600 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 font-semibold"
-                          placeholder="DROBON/AI-Brain"
+                          placeholder="DROBON/Ai-brain"
                           value={githubRepo}
                           onChange={(e) => setGithubRepo(e.target.value)}
                           required
@@ -1560,18 +1597,20 @@ export default function App() {
                     </div>
 
                     {/* File Path input */}
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400">Target File Path (কমিট ফাইল নাম):</label>
-                      <input
-                        type="text"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs placeholder-slate-600 focus:outline-none focus:border-indigo-605 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                        placeholder="active_brain_blueprint.json"
-                        value={githubFilePath}
-                        onChange={(e) => setGithubFilePath(e.target.value)}
-                        required
-                        id="input-github-filepath"
-                      />
-                    </div>
+                    {githubSyncType === "memory" && (
+                      <div className="space-y-1 animate-fade-in">
+                        <label className="text-[10px] font-bold text-slate-400">Target File Path (কমিট ফাইল নাম):</label>
+                        <input
+                          type="text"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs placeholder-slate-600 focus:outline-none focus:border-indigo-605 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                          placeholder="active_brain_blueprint.json"
+                          value={githubFilePath}
+                          onChange={(e) => setGithubFilePath(e.target.value)}
+                          required
+                          id="input-github-filepath"
+                        />
+                      </div>
+                    )}
 
                     {githubSyncError && (
                       <div className="p-3 bg-rose-950/30 rounded-lg border border-rose-900/40 text-rose-400 text-[10px] flex items-start gap-2 leading-relaxed" id="github-sync-error">
